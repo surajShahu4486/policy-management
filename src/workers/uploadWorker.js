@@ -1,3 +1,4 @@
+
 import "dotenv/config";
 import { parentPort, workerData } from "worker_threads";
 import mongoose from "mongoose";
@@ -11,160 +12,147 @@ import Carrier from "../models/Carrier.js";
 import Policy from "../models/Policy.js";
 
 async function processFile() {
+  try {
+    // 1. Connect MongoDB
+    await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 10000
+    });
 
-    // Connect MongoDB
-    await mongoose.connect(process.env.MONGO_URI);
-
-    // CSV file
+    // 2. Read CSV or Excel file
     const workbook = XLSX.readFile(workerData.filePath);
-
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
-    const rows = XLSX.utils.sheet_to_json(sheet);
+    const rows = XLSX.utils.sheet_to_json(sheet, {
+      defval: ""
+    });
+
+    console.log("Total rows:", rows.length);
+    console.log("CSV columns:", Object.keys(rows[0] || {}));
 
     let imported = 0;
     let skipped = 0;
 
+    // 3. Process each row
     for (const row of rows) {
+      try {
+        // Actual CSV column names
+        const agentName = row.agent;
+        const firstName = row.firstname;
+        const email = row.email;
+        const phoneNumber = row.phone;
+        const accountName = row.account_name;
+        const categoryName = row.category_name;
+        const companyName = row.company_name;
+        const policyNumber = row.policy_number;
 
-        try {
-
-            // Get data from Excel
-            const agentName = row["Agent Name"];
-            const firstName = row["First Name"];
-            const email = row["Email"];
-            const phoneNumber = row["Phone Number"];
-
-            const accountName = row["Account Name"];
-
-            const categoryName = row["category_name"];
-            const companyName = row["company_name"];
-
-            const policyNumber = row["Policy Number"];
-
-            // Required fields
-            if (!firstName || !policyNumber) {
-                skipped++;
-                continue;
-            }
-
-            // 1. Agent
-            let agent = await Agent.findOne({
-                agentName: agentName
-            });
-
-            if (!agent) {
-                agent = await Agent.create({
-                    agentName: agentName
-                });
-            }
-
-            // 2. User
-            let user = await User.findOne({
-                email: email
-            });
-
-            if (!user) {
-                user = await User.create({
-                    firstName: firstName,
-                    dob: row["DOB"],
-                    address: row["Address"],
-                    phoneNumber: phoneNumber,
-                    state: row["State"],
-                    zipCode: row["Zip Code"],
-                    email: email,
-                    gender: row["Gender"],
-                    userType: row["User Type"],
-                    username: row["Username"] || firstName,
-                    agentId: agent._id
-                });
-            }
-
-            // 3. Account
-            if (accountName) {
-
-                const account = await Account.findOne({
-                    accountName: accountName
-                });
-
-                if (!account) {
-                    await Account.create({
-                        accountName: accountName
-                    });
-                }
-            }
-
-            // 4. LOB
-            let lob = await LOB.findOne({
-                categoryName: categoryName
-            });
-
-            if (!lob) {
-                lob = await LOB.create({
-                    categoryName: categoryName
-                });
-            }
-
-            // 5. Carrier
-            let carrier = await Carrier.findOne({
-                companyName: companyName
-            });
-
-            if (!carrier) {
-                carrier = await Carrier.create({
-                    companyName: companyName
-                });
-            }
-
-            // 6. Policy
-            const policy = await Policy.findOne({
-                policyNumber: policyNumber
-            });
-
-            if (!policy) {
-
-                await Policy.create({
-                    policyNumber: policyNumber,
-                    policyStartDate: row["Policy Start Date"],
-                    policyEndDate: row["Policy End Date"],
-                    policyCategoryId: lob._id,
-                    companyId: carrier._id,
-                    userId: user._id
-                });
-            }
-
-            imported++;
-
-        } catch (error) {
-
-            skipped++;
-
-            console.log("Error:", error.message);
+        // Required fields
+        if (!firstName || !policyNumber || !email ||
+            !categoryName || !companyName) {
+          skipped++;
+          continue;
         }
+
+        // 4. Agent
+        let agent = await Agent.findOne({ agentName });
+
+        if (!agent) {
+          agent = await Agent.create({ agentName });
+        }
+
+        // 5. User
+        let user = await User.findOne({ email });
+
+        if (!user) {
+          user = await User.create({
+            firstName,
+            dob: row.dob || null,
+            address: row.address,
+            phoneNumber,
+            state: row.state,
+            zipCode: row.zip,
+            email,
+            gender: row.gender,
+            userType: row.userType,
+            username: firstName,
+            agentId: agent._id
+          });
+        }
+
+        // 6. Account
+        if (accountName) {
+          let account = await Account.findOne({ accountName });
+
+          if (!account) {
+            await Account.create({ accountName });
+          }
+        }
+
+        // 7. LOB (policy category)
+        let lob = await LOB.findOne({ categoryName });
+
+        if (!lob) {
+          lob = await LOB.create({ categoryName });
+        }
+
+        // 8. Carrier (insurance company)
+        let carrier = await Carrier.findOne({ companyName });
+
+        if (!carrier) {
+          carrier = await Carrier.create({ companyName });
+        }
+
+        // 9. Policy
+        const existingPolicy = await Policy.findOne({
+          policyNumber
+        });
+
+        if (!existingPolicy) {
+          await Policy.create({
+            policyNumber,
+            policyStartDate: row.policy_start_date || null,
+            policyEndDate: row.policy_end_date || null,
+            policyCategoryId: lob._id,
+            companyId: carrier._id,
+            userId: user._id
+          });
+        }
+
+        imported++;
+
+      } catch (error) {
+        skipped++;
+        console.error(
+          "Row error:",
+          row.policy_number,
+          error.message
+        );
+      }
     }
 
-    await mongoose.disconnect();
-
     return {
-        success: true,
-        message: "File imported successfully",
-        totalRows: rows.length,
-        imported: imported,
-        skipped: skipped
+      success: true,
+      message: "CSV processing completed",
+      totalRows: rows.length,
+      processed: imported,
+      skipped
     };
-}
 
+  } finally {
+    // 10. Close MongoDB connection
+    await mongoose.disconnect();
+  }
+}
 
 // Start worker
 processFile()
-    .then((result) => {
-        parentPort.postMessage(result);
-    })
-    .catch((error) => {
+  .then((result) => {
+    parentPort.postMessage(result);
+  })
+  .catch((error) => {
+    console.error("Upload worker error:", error);
 
-        parentPort.postMessage({
-            success: false,
-            message: error.message
-        });
-
+    parentPort.postMessage({
+      success: false,
+      message: error.message
     });
+  });
