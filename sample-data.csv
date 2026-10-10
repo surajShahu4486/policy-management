@@ -1,0 +1,4 @@
+Agent Name,First Name,DOB,Address,Phone Number,State,Zip Code,Email,Gender,User Type,Username,Account Name,category_name,company_name,Policy Number,Policy Start Date,Policy End Date
+John Agent,Suraj,1995-05-10,Nagpur,9876543210,Maharashtra,440001,suraj@example.com,Male,Customer,suraj,Suraj Account,Health,ABC Insurance,POL1001,2026-01-01,2027-01-01
+John Agent,Suraj,1995-05-10,Nagpur,9876543210,Maharashtra,440001,suraj@example.com,Male,Customer,suraj,Suraj Account,Vehicle,XYZ Insurance,POL1002,2026-02-01,2027-02-01
+Jane Agent,Rahul,1992-03-15,Pune,9876501234,Maharashtra,411001,rahul@example.com,Male,Customer,rahul,Rahul Account,Life,ABC Insurance,POL1003,2026-03-01,2027-03-01
